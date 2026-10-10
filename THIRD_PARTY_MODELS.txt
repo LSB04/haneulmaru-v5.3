@@ -1,0 +1,9 @@
+Qwen/Qwen3.5-2B
+Source: https://huggingface.co/Qwen/Qwen3.5-2B
+License: Apache-2.0; downloaded checkpoint includes original LICENSE.
+Exact revision and per-file SHA-256: model-selection.json
+ClikaRT 0.6.4 Windows / Vulkan text tower only.
+Model weights and SDK are downloaded separately, not redistributed in Git.
+Official ClikaRT loader reference: https://docs.clika.io/clikart/api-py/modelverse-auto/
+CLIKA SDK and runtime license: obtain them from your authorized CLIKA project.
+Local measurements are single-PC observations, not vendor performance claims.

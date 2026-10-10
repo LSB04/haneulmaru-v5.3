@@ -1,0 +1,41 @@
+import {installLiveSender} from './live-video.js';
+import {motionOnly} from './control-policy.js';
+import {installPreviewSender} from './lan-preview.js';
+import {streamBridge as bridge} from './app.js';
+import {installAI} from './clika-panel.js';
+import {signaling,peer,sendData,streamProfiles,configureSender,streamDelta} from './rtc.js';
+const box=document.createElement('section');box.style.cssText='padding:12px;border:1px solid #78debe;margin-bottom:12px';const imuPanel=document.querySelector('.imu-panel');if(imuPanel)imuPanel.after(box);else document.getElementById('panel').prepend(box);
+box.innerHTML='<b>V5.3 · 로컬 Wi-Fi + CLIKA</b><p id="streamStatus">휴대폰 연결 대기</p><label>전송 화질 <select id="streamQuality"></select></label><p id="streamConfig"></p><p id="streamStats"></p><p id="pathStats"></p><label>PC 내부 주소 <select id="lanAddress"></select></label><p>① 처음 한 번: V5.3 앱 설치</p><img id="installQr" style="width:160px;background:white"><p><a id="installLink" target="_blank" rel="noopener">앱 설치 주소</a></p><p>② 앱으로 연결 (QR 또는 전체 주소 붙여넣기)</p><img id="streamQr" style="width:200px;background:white"><p style="overflow-wrap:anywhere"><a id="streamLink">휴대폰 접속 주소</a></p><button id="copyLanLink">연결 주소 복사</button><p><a href="/android-app.apk" download>V5.3 APK를 PC에 저장</a></p><p>외부 인터넷·모바일 데이터 없이 같은 Wi-Fi/핫스팟을 유지하세요. 기존 V5 앱 대신 V5.3 앱을 사용하세요. PC 렌더러 탭을 화면에 열어두세요.</p>';
+const $=id=>document.getElementById(id);
+for(const [value,p] of Object.entries(streamProfiles)){const o=document.createElement('option');o.value=value;o.textContent=p.label;$('streamQuality').append(o);}
+for(const key of ['ar','xr','sensor'])$(key).disabled=true;
+let pc=null,id='',pending=[],media=null,sender=null,streamKey='fast',transport=null,statsLast=null,configQueue=Promise.resolve(),zeroFrames=0;
+function status(s){$('streamStatus').textContent=(pc?.connectionState==='connected'&&/timed out|timeout|fetch/i.test(s))?'영상 연결 유지 · 연결정보 서버 재시도 중':s;}
+const signal=signaling('host',status);
+let previewId='';const stopPreview=installPreviewSender(bridge,signal,status);
+function previewState(){if(previewId)signal.send({type:'preview-state',session:previewId,state:{type:'state',...bridge.state(),streamKey,hostHidden:document.hidden,senderStatus:$('streamStatus').textContent}}).catch(()=>{});}
+installAI(bridge,signal,()=>transport);
+const live=installLiveSender(bridge,signal,{status,onReady(){previewId='';pc?.close();pc=null;media?.getTracks().forEach(t=>t.stop());sender=null;bridge.resetSession();},onControl:receive,state:()=>({...bridge.state(),streamKey,hostHidden:document.hidden}),profile:()=>streamProfiles[streamKey],onStats(t){document.getElementById("streamStats").textContent=`H.264 실측 ${t.width}×${t.height} / ${t.fps.toFixed(1)} FPS / ${t.mbps.toFixed(1)} Mbps · 인코딩 대기 포함 ${t.encodeMs.toFixed(1)}ms`;document.getElementById("streamConfig").textContent=`목표 ${streamProfiles[streamKey].fps} FPS · ${t.hardwarePreference} · 대기열 ${t.queue} · 생략 ${t.dropped}`;}});
+$('connect').textContent='PC GPU 렌더링 → H.264 지속 스트림 → 로컬 휴대폰 수신';
+setInterval(()=>{if(location.hostname==='127.0.0.1')signal.api('telemetry',{metrics:{...bridge.metrics(),...(transport||{})}}).catch(()=>{});},2500);
+async function info(){try{const d=await signal.api('info');if(!d.links?.length){status('PC 단독 모드 · 휴대폰 연결은 실행.ps1로 시작하세요.');return;}const select=$('lanAddress');select.replaceChildren();for(const item of d.links){const o=document.createElement('option');o.value=item.ip;o.textContent=item.ip;select.append(o);}function show(){const item=d.links.find(x=>x.ip===select.value);const link=$('streamLink');link.textContent=item.url;link.removeAttribute('href');$('streamQr').src='data:image/svg+xml;base64,'+item.qr;$('installLink').href=$('installLink').textContent=item.install;$('installQr').src='data:image/svg+xml;base64,'+item.installQr;}select.onchange=show;show();$('copyLanLink').onclick=()=>navigator.clipboard.writeText($('streamLink').textContent).then(()=>status('연결 주소 복사됨')).catch(()=>status('주소를 직접 선택해 복사하세요.'));}catch(e){status(e.message);setTimeout(info,3000);}}info();
+function configure(){const current=sender,key=streamKey,profile=streamProfiles[key];bridge.setStreamEdge(profile.edge);$('streamQuality').value=key;
+ configQueue=configQueue.catch(()=>{}).then(async()=>{if(!current||sender!==current)return;try{const p=await configureSender(current,profile);if(sender!==current)return;const e=p.encodings[0];$('streamConfig').textContent=`설정 적용: 긴 변 ${profile.edge}px / 상한 ${(e.maxBitrate/1e6).toFixed(0)} Mbps / ${e.maxFramerate} FPS · 해상도 우선 (보장값 아님)`;}catch(e){$('streamConfig').textContent='전송 설정 적용 실패: '+e.message;}});return configQueue;}
+$('streamQuality').value=streamKey;$('streamQuality').onchange=()=>{streamKey=$('streamQuality').value;configure();};
+async function makeOffer(client){live.suspend();previewId='';pc?.close();media?.getTracks().forEach(t=>t.stop());bridge.resetSession();id=client;pending=[];statsLast=null;transport=null;zeroFrames=0;pc=peer(status,receive);const thisPeer=pc,thisId=id;pc.channel=pc.createDataChannel('control',{ordered:true});pc.channel.onmessage=e=>{try{receive(JSON.parse(e.data));}catch{}};
+ bridge.setStreamEdge(streamProfiles[streamKey].edge);media=bridge.canvas.captureStream(streamProfiles[streamKey].fps);const track=media.getVideoTracks()[0];track.contentHint='detail';sender=pc.addTrack(track,media);
+ pc.onicecandidate=e=>{if(e.candidate)signal.send({type:'ice',session:thisId,candidate:e.candidate.toJSON()}).catch(e=>status(e.message));};
+ await pc.setLocalDescription(await pc.createOffer());if(pc===thisPeer)await signal.send({type:'offer',session:id,sdp:pc.localDescription});}
+function receive(d){if(d.type==='control'){bridge.control(d);if(!motionOnly(d))sendData(pc,{type:'state',...bridge.state(),streamKey,transport,hostHidden:document.hidden});if(Object.hasOwn(streamProfiles,d.streamKey)&&streamKey!==d.streamKey){streamKey=d.streamKey;configure();}}if(d.type==='ping')sendData(pc,{type:'pong',at:d.at});if(d.type==='receiverStats'&&Number.isFinite(d.fps)){$('pathStats').textContent=`휴대폰 수신 ${d.fps.toFixed(1)} FPS · 손실 누적 ${Number.isFinite(d.lost)?d.lost:'?'} · 지터 ${Number.isFinite(d.jitterMs)?d.jitterMs:'?'}ms · 조작 왕복 ${Number.isFinite(d.rtt)?d.rtt:'?'}ms`;}}
+signal.poll(async m=>{if(m.type==='preview-ready'){live.suspend();pc?.close();pc=null;media?.getTracks().forEach(t=>t.stop());sender=null;previewId=m.session;bridge.resetSession();previewState();return;}if(m.type==='preview-control'){if(m.session===previewId&&m.control&&typeof m.control==='object'){bridge.control(m.control);previewState();}return;}if(m.type==='ready'){await makeOffer(m.session);return;}if(m.session!==id||!pc)return;if(m.type==='answer'){await pc.setRemoteDescription(m.sdp);for(const c of pending)await pc.addIceCandidate(c);pending=[];await configure();}if(m.type==='ice'){if(pc.remoteDescription)await pc.addIceCandidate(m.candidate);else pending.push(m.candidate);}});
+setInterval(previewState,500);
+setInterval(()=>sendData(pc,{type:'state',...bridge.state(),streamKey,transport,hostHidden:document.hidden}),500);
+let collecting=false;
+setInterval(async()=>{if(collecting||pc?.connectionState!=='connected')return;collecting=true;const current=pc;try{const reports=await current.getStats();if(pc!==current)return;reports.forEach(s=>{if(s.type==='outbound-rtp'&&s.kind==='video'&&!s.isRemote){transport=streamDelta(s,statsLast);statsLast=s;const t=transport;const reason={none:'제한 없음',cpu:'CPU 제한',bandwidth:'대역폭 제한',other:'기타 제한',unknown:'미제공'}[t.reason]||t.reason;$('streamStats').textContent=`실측 ${t.width}×${t.height} / ${t.fps.toFixed(1)} FPS / ${t.mbps.toFixed(1)} Mbps · 인코딩 ${t.encodeMs.toFixed(1)}ms · ${reason} · ${t.encoder}`;
+ if(document.hidden){zeroFrames=0;status('PC 렌더러 탭이 숨겨져 있습니다. 지형 화면을 맨 앞으로 띄우세요.');}
+ else if(t.fps>0){zeroFrames=0;status('영상 송신 중');}
+ else if(++zeroFrames>=6)status('조작 연결됨 · 영상 송신 0 FPS · PC 지형 화면을 맨 앞으로 띄우세요.');
+ }});}catch(e){$('streamStats').textContent='통계 수집 실패: '+e.message;}finally{collecting=false;}},1000);
+addEventListener('beforeunload',()=>{live.stop();stopPreview();signal.stop();pc?.close();media?.getTracks().forEach(t=>t.stop());});
+
+if(new URLSearchParams(location.search).has('transportbench'))import('./transport-benchmark.js').then(m=>m.runBenchmark(bridge,signal,live,status));
