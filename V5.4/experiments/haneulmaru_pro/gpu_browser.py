@@ -39,7 +39,12 @@ def launch(url, project_root):
     chrome = find_chrome()
     output = Path(project_root) / 'output'
     output.mkdir(parents=True, exist_ok=True)
-    prefer_high_performance(chrome, output / 'chrome_gpu_preference_backup.json')
+    try:
+        prefer_high_performance(chrome, output / 'chrome_gpu_preference_backup.json')
+    except OSError:
+        # A Windows preference failure must not shut down the already-open LAN server.
+        # Keep the existing OS setting; the renderer reports its actual GPU separately.
+        print('Windows GPU preference could not be changed; using the existing setting.', flush=True)
     profile = output / 'rtx_browser_profile'
     profile.mkdir(exist_ok=True)
     state = profile / 'Local State'

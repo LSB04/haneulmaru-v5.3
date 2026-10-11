@@ -84,7 +84,7 @@ function effectTick(){
 function metrics(samples){const sorted=[...samples].sort((a,b)=>a-b),avg=samples.reduce((a,b)=>a+b,0)/Math.max(1,samples.length);return {gpu,software,quality,count:sim.agents().length,mode:sim.mode,drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,width:renderer.domElement.width,height:renderer.domElement.height,frames:samples.length,meanFps:avg?1000/avg:0,p95FrameMs:sorted[Math.floor(sorted.length*.95)]||0};}
 $('bench').onclick=()=>{bench={start:performance.now(),samples:[]};say('10초 성능 측정 중 · PC 화면을 유지하세요.');};
 $('export').onclick=()=>{if(!benchmarkResult)return say('먼저 성능 측정을 실행하세요.');const a=document.createElement('a'),url=URL.createObjectURL(new Blob([JSON.stringify(benchmarkResult,null,2)],{type:'application/json'}));a.href=url;a.download='haneulmaru-v5-benchmark.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-renderer.setAnimationLoop(now=>{
+function renderFrame(now){
  const ms=clockLast?now-clockLast:0,dt=Math.min(ms/1000,.1);clockLast=now;sim.step(dt*+$('speed').value,moveInput());
  sim.ensureSelection();const agents=sim.agents();
  cameraTick(agents.find(a=>a.id===sim.selected));world.update(sim.time,agents,view==='cockpit'?sim.selected:null);effectTick();
@@ -101,9 +101,11 @@ renderer.setAnimationLoop(now=>{
  if(now-hudAt>160){sync();hudAt=now;}
  if(now-statAt>1000){latestMetrics=metrics(frameSamples);$('fps').textContent=latestMetrics.meanFps.toFixed(1)+' FPS';$('stats').textContent=`${renderer.domElement.width} × ${renderer.domElement.height} · ${renderer.info.render.calls} calls · ${renderer.info.render.triangles.toLocaleString()} triangles`;frameSamples=[];statAt=now;}
  if(bench&&now-bench.start>=10000){benchmarkResult=metrics(bench.samples);say(`실측 ${benchmarkResult.meanFps.toFixed(1)} FPS · P95 ${benchmarkResult.p95FrameMs.toFixed(1)} ms`);bench=null;}
-});
+}
+renderer.setAnimationLoop(renderFrame);
 addEventListener('resize',resize);screen.orientation?.addEventListener('change',resize);addEventListener('visibilitychange',()=>{clockLast=0;keys.clear();remoteMovement={};if(document.hidden)bench=null;});
 $('view').addEventListener('webglcontextlost',e=>{e.preventDefault();renderer.setAnimationLoop(null);say('GPU 연결을 확인하고 새로고침하세요.');});
+$('view').addEventListener('webglcontextrestored',()=>{clockLast=0;renderError='';renderer.shadowMap.needsUpdate=true;resize();renderer.setAnimationLoop(renderFrame);say('GPU 복구됨 · 영상 전송을 재개합니다.');});
 $('modelReport').textContent='도로·건물 윤곽은 OpenStreetMap 공개 자료입니다. 건물 높이 일부·외관·지면 고도는 추정 표현이며, 드론과 게임은 합성입니다.';
 const frameCaptures=new Set(); function inRenderedFrame(fn){return new Promise((resolve,reject)=>{const finish=()=>{clearTimeout(timer);frameCaptures.delete(finish);try{resolve(fn());}catch(e){reject(e);}};const timer=setTimeout(()=>{frameCaptures.delete(finish);reject(Error("PC 렌더러 탭이 멈춰 있습니다. 지형 창을 열어두세요."));},2000);frameCaptures.add(finish);});}
 export const streamBridge={

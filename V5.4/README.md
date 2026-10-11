@@ -62,7 +62,7 @@ python android-usb/build.py --sdk-tools "C:/Android/build-tools/35.0.0" --androi
 
 ## 검증 범위
 
-- JavaScript 테스트67개 통과: 합류/배치, 시점 줌, 핀치 합산/취소, 조작 전송 실패/응답 확인, 깊이 정밀도/도로 층 분리, 카메라 취소·거부·종료 등.
+- JavaScript 테스트71개 통과: 합류/배치, 시점 줌, 핀치 합산/취소, 조작 전송 실패/응답 확인, 깊이 정밀도/도로 층 분리, 카메라 취소·거부·종료 및 영상 복구 회귀 테스트 등.
 - 센서 미연결 상태의 실제 RTX 렌더러에 로컬 WSS로 확대/축소 명령을 전송하여 네 시점 × 가상환경/AR = 16개 변화를 확인했습니다. `verify_zoom.py`로 재현할 수 있습니다. 실기기 손가락 입력 검증과는 구분합니다.
 - 실제 RTX 2080 Ti 렌더러: 드론 선택에 따른 카메라 변경, 탑승 위치, 객체 전용 전송 프레임, 일반 도시 영상 복귀 확인.
 - APK Java 컴파일 및 v2/v3 서명 검증 완료, 기존 V5.3 서명과 일치.
@@ -70,7 +70,19 @@ python android-usb/build.py --sdk-tools "C:/Android/build-tools/35.0.0" --androi
 
 ## 참고
 
+- [맵 생성 방식·좌표계·드론 배치 기술 설명 PDF](docs/Haneulmaru_V5.4_Map_Formation_Coordinates_KO.pdf)
+- [영상 멈춤 수정 및 검증 결과](영상멈춤_수정결과.txt)
+
 - [Android WebView 카메라 권한](https://developer.android.com/reference/android/webkit/PermissionRequest)
 - [getUserMedia 보안·권한](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
 - 지도 출처와 추정 건물 구분: [MAP_SOURCES.txt](experiments/haneulmaru_pro/MAP_SOURCES.txt)
 - CLIKA / Qwen3.5-2B는 기존 PC 자연어 장면 설정 기능이며 이번 AR 복구에서 모델을 변경하지 않았습니다.
+
+## 영상 멈춤 복구 업데이트
+
+- 캡처 시간 초과 후 송신을 영구 중지하던 경로를 재시도로 변경했습니다. 영상·조작 소켓이 끊기면 자동 재연결합니다.
+- 영상 갱신이 2.5초 이상 멈추면 디코더·키프레임을 재동기화하고, 8초 이상이면 연결을 다시 엽니다. PC 탭이 숨겨진 경우는 창을 띄우도록 안내합니다.
+- 코덱 설정을 다시 전달하고, 동일한 설정 수신 시 정상 디코더를 불필요하게 초기화하지 않습니다. GPU 컨텍스트 복구 후 렌더 루프도 재개합니다.
+- Windows GPU 선호도 설정 권한이 없어도 기존 설정으로 서버 실행을 계속합니다. 실제 GPU 선택은 렌더러 표시로 확인해야 합니다.
+- 같은 PC의 로컬 TLS 시험에서 10초 동안 H.264 패킷 600개와 키프레임 10개를 받았습니다. 휴대폰 무선 디코딩 FPS 측정은 아닙니다.
+- 이번 변경에는 APK 재설치가 필요 없습니다. PC 수정본을 실행하고 앱에서 **최신 QR → 로컬 연결 → PC 연결 시작**으로 다시 접속하세요. 휴대폰 실기기 재확인은 필요합니다.
