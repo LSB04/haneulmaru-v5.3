@@ -19,7 +19,7 @@ async function socket(url,lane,onMessage,onClose){
  return {api,raw,socket,send:message=>api('signal',message),stop:()=>alive=false,async poll(onMessage){while(alive){try{const data=await api('signal?after='+cursor);for(const item of data){cursor=item.id;await onMessage(item.message);}}catch(e){status(e.message);}await wait(300);}}};
 }
 export function peer(status,onMessage){const pc=new RTCPeerConnection({iceServers:[]});pc.onconnectionstatechange=()=>status('WebRTC '+pc.connectionState+(pc.connectionState==='failed'?' · 같은 노트북 핫스팟 연결을 확인하세요.':''));pc.ondatachannel=e=>{pc.channel=e.channel;e.channel.onmessage=ev=>{try{onMessage(JSON.parse(ev.data));}catch{}};};return pc;}
-export function sendData(pc,data){if(pc?.channel?.readyState==='open'&&pc.channel.bufferedAmount<65536)pc.channel.send(JSON.stringify(data));}
+export function sendData(pc,data){if(pc?.channel?.readyState!=='open'||pc.channel.bufferedAmount>=65536)return false;try{pc.channel.send(JSON.stringify(data));return true;}catch{return false;}}
 
 export function connectionRoute(reports){
  let pair=null;

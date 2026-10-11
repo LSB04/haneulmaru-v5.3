@@ -1,4 +1,4 @@
-import {zoomCamera} from './camera-zoom.js';
+import {zoomCamera,cameraZoomState} from './camera-zoom.js';
 import {installScenarioControls} from './scenario-controls.js';
 import {motionOnly} from './control-policy.js';
 import {validateScene} from './scene-settings.js';
@@ -31,7 +31,7 @@ function resetView(){lookYaw=0;lookPitch=view==='chase'?.2:0;if(view==='overview
 function restart(){sim.seed=Number($('seed').value)>>>0;sim.reset();keys.clear();remoteMovement={};remoteUntil=0;clearEffects();setView(sim.mode==='flight'?'chase':'overview');sync();}
 function sync(){
  $('flight').classList.toggle('active',sim.mode==='flight');$('game').classList.toggle('active',sim.mode==='game');$('spawn').disabled=sim.mode!=='game'||sim.paused;$('autoArrival').checked=sim.auto;$('pilot').value=sim.pilot;$('pause').textContent=sim.paused?'재생':'일시정지';$('count').value=sim.count;$('countText').textContent=sim.count;
- sceneUI.update(sim.summary());updateHUD(sim.summary(),catalog);
+ sceneUI.update(sim.summary());sceneUI.updateZoom(cameraZoomState({view,camera,ortho,controls,chaseDistance}));updateHUD(sim.summary(),catalog);
 }
 $('flight').onclick=()=>setMode('flight');$('game').onclick=()=>setMode('game');
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{setView(b.dataset.view);sync();});
@@ -111,7 +111,7 @@ export const streamBridge={
  setStreamEdge(edge){if([960,1280,1920,2560].includes(edge)){streamEdge=edge;resize();}},
  setImuEnabled(value){imuEnabled=!!value;controls.enabled=view==='overview'&&!imuEnabled;return true;},resetView,
  imuRotate(yaw,pitch){if(!imuEnabled||![yaw,pitch].every(Number.isFinite))return;if(view==='overview'){const e=new T.Euler().setFromQuaternion(camera.quaternion,'YXZ');e.y+=yaw;e.x=T.MathUtils.clamp(e.x+pitch,-1.4,1.4);camera.quaternion.setFromEuler(e);}else{lookYaw+=yaw;lookPitch=T.MathUtils.clamp(lookPitch+pitch,-1.25,1.25);}},
- state:()=>({ar,cameraPosition:camera.position.toArray(),cameraQuaternion:camera.quaternion.toArray(),city:world.cityStats,renderError,cameraDistance:camera.position.distanceTo(controls.target),cameraZoom:view==='map'?ortho.zoom:camera.fov,gpu,count:sim.count,paused:sim.paused,top:view==='map',quality,imuEnabled,view,scenario:sim.summary()}),
+ state:()=>({ar,lastControlSeq:remoteSeq,zoomState:cameraZoomState({view,camera,ortho,controls,chaseDistance}),cameraPosition:camera.position.toArray(),cameraQuaternion:camera.quaternion.toArray(),city:world.cityStats,renderError,cameraDistance:camera.position.distanceTo(controls.target),cameraZoom:view==='map'?ortho.zoom:camera.fov,gpu,count:sim.count,paused:sim.paused,top:view==='map',quality,imuEnabled,view,scenario:sim.summary()}),
  control(d){
   if(!Number.isSafeInteger(d.seq)||d.seq<=remoteSeq)return;remoteSeq=d.seq;
   if(d.scene){try{this.applyScene(validateScene(d.scene));}catch{return;}}

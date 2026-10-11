@@ -6,7 +6,7 @@ export function packet(chunk, epoch){
 }
 export function unpack(buffer){const d=new DataView(buffer);if(d.byteLength<14)throw Error('짧은 영상 패킷');return {epoch:d.getUint32(1),type:d.getUint8(0)?'key':'delta',timestamp:d.getFloat64(5),data:new Uint8Array(buffer,13)};}
 export function dimensions(canvas,edge=1920){const scale=Math.min(1,edge/Math.max(canvas.width,canvas.height));return {width:Math.max(2,Math.floor(canvas.width*scale/2)*2),height:Math.max(2,Math.floor(canvas.height*scale/2)*2)};}
-export function send(socket,value){if(socket?.readyState===1&&socket.bufferedAmount<65536)socket.send(JSON.stringify(value));}
+export function send(socket,value){if(socket?.readyState!==1||socket.bufferedAmount>=65536)return false;try{socket.send(JSON.stringify(value));return true;}catch{return false;}}
 export async function openLane(signal,lane,onMessage,onClose=()=>{}){
  const config=await signal.api('live-info');return signal.socket(config.url,lane,onMessage,onClose);
 }
@@ -66,7 +66,7 @@ export function createLiveReceiver(signal,canvas,{status,onState,onStats}){
   control=await openLane(signal,'control',event=>{if(gen!==generation)return;const d=JSON.parse(event.data);
    if(d.type==='state')onState(d);if(d.type==='config')configure(d);if(d.type==='encoderStats')onStats?.(d);
    if(d.type==='pong')rtt=Math.round(performance.now()-d.at);
-  },()=>{if(running)status('실시간 연결 끊김 · PC 연결 시작을 다시 누르세요.');});
+  },()=>{if(running){clearInterval(statsTimer);status('조작 연결 끊김 · PC 연결 시작을 다시 누르세요.');}});
   if(gen!==generation){control.close();return;}
   video=await openLane(signal,'video',event=>{if(gen!==generation)return;try{const m=unpack(event.data);
    if(m.epoch!==epoch||!config){keyframe();return;}
@@ -76,8 +76,8 @@ export function createLiveReceiver(signal,canvas,{status,onState,onStats}){
    decoder.decode(new EncodedVideoChunk(m));
   }catch(e){keyframe();status('영상 재동기화 중 · '+e.message);}},()=>{if(running)status('영상 소켓 끊김 · 다시 연결하세요.');});
   if(gen!==generation){video.close();return;}send(control,{type:'ready'});last=performance.now();
-  statsTimer=setInterval(()=>{const now=performance.now(),fps=frames*1000/(now-last);last=now;frames=0;send(control,{type:'ping',at:now});send(control,{type:'receiverStats',fps,rtt,dropped});onStats?.({type:'receiverStats',fps,rtt,dropped,total,width:canvas.width,height:canvas.height});status(total?'V5.4 로컬 H.264 영상 수신 중':'H.264 연결됨 · 첫 영상 대기');},1000);
+  statsTimer=setInterval(()=>{if(control?.readyState!==1||video?.readyState!==1){status('영상 또는 조작 연결 끊김 · PC 연결 시작을 다시 누르세요.');return;}const now=performance.now(),fps=frames*1000/(now-last);last=now;frames=0;send(control,{type:'ping',at:now});send(control,{type:'receiverStats',fps,rtt,dropped});onStats?.({type:'receiverStats',fps,rtt,dropped,total,width:canvas.width,height:canvas.height});status(fps>0?'V5.4 로컬 H.264 영상 수신 중':total?'영상 갱신 대기 · PC 지형 탭을 확인하세요.':'H.264 연결됨 · 첫 영상 대기');},1000);
  }
  function stop(){running=false;generation++;clearInterval(statsTimer);control?.close();video?.close();decoder?.close();control=video=decoder=null;epoch=-1;needsKey=true;total=0;frames=0;canvas.hidden=true;}
- return {start,stop,send(data){send(control,data);},get connected(){return running&&control?.readyState===1;}};
+ return {start,stop,send(data){return running&&send(control,data);},get connected(){return running&&control?.readyState===1;}};
 }
