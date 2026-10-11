@@ -1,0 +1,62 @@
+# 하늘마루 V5.4 AR
+
+양재 거리 지도와 합성 드론 시뮬레이션. PC GPU에서 렌더링하고 Android로 로컬 영상·조작·USB IMU를 연결합니다.
+
+## 실행
+
+1. 기존 PC에서 `하늘마루_실행.cmd` 실행 → Wi-Fi/핫스팟 선택.
+2. [V5.4 AR APK](android-usb/dist/haneulmaru-v54-ar.apk)를 기존 V5.3 LAN 앱에 업데이트 설치.
+3. PC의 새 연결 QR 또는 전체 주소 → 앱 **로컬 연결 → PC 연결 시작**.
+4. **카메라 AR 켜기**를 누르고 카메라 권한 허용.
+5. 드론 선택 후 **추적 / 탑승 / 전체 3D / 2D 지도** 전환. 터치·NU40 시선 조작 유지.
+6. **가상환경으로 전환**으로 카메라를 끄고 도시 지도 화면 복귀.
+
+PC 주소: http://127.0.0.1:8810/host
+
+## AR 동작
+
+- PC는 일반 도시 화면을 유지합니다. 동일한 드론 좌표와 가상 카메라로 객체 전용 영상을 추가 렌더링합니다.
+- 객체 전용 영상은 자홍색 배경을 사용합니다. 휴대폰 WebGL이 이 배경만 제거하고 휴대폰 후면 카메라 위에 합성합니다.
+- H.264 지속 스트림, WebRTC, HTTPS 호환 수신 경로를 지원합니다.
+- 탑승 시 선택 드론의 몸체는 숨기고 그 위치에서 다른 가상 객체를 관찰합니다.
+- 카메라 영상은 휴대폰 안에서만 표시합니다. 마이크 사용·카메라 업로드·저장은 없습니다.
+- 이는 카메라 영상 합성입니다. 실공간 위치 추적, 평면 고정, ARCore 앵커, 실제 사물에 의한 가림은 지원하지 않습니다.
+- 합성 객체와 게임 이벤트만 사용합니다. 카메라 탐지 결과를 대응 동작에 연결하지 않습니다.
+
+## 버전 호환과 배치
+
+- 새 앱 표시명: **하늘마루 V5.4 AR**, 버전 5.4-AR / code 61.
+- 기존 V5.3 LAN과 패키지·서명이 같아 업데이트 설치 가능합니다. 기존 V5.3 앱은 가상환경·USB만 지원합니다.
+- 5×4 분산 슬롯, 간격160, 새 파랑 합류5초, 파랑 최대20개를 유지합니다.
+- 인터넷/모바일 데이터 없이 같은 Wi-Fi 또는 휴대폰 핫스팟에서 연결할 수 있습니다. 두 기기 사이 로컬 연결은 필요합니다.
+- PC 렌더러 창이 최소화되거나 탭이 숨겨지면 전송이 멈출 수 있습니다.
+
+## 다른 PC에서 빌드
+
+공개 APK는 제작 PC의 공개 CA 인증서를 포함합니다. 다른 PC에서 생성한 새 CA에는 그대로 연결되지 않습니다.
+
+1. `모델_설치.ps1`로 의존성을 준비합니다. ClikaRT 라이선스와 모델 파일은 별도로 준비합니다.
+2. 프로젝트 Python으로 `experiments/haneulmaru_pro/lan_tls.py`를 실행해 해당 PC의 CA를 만들고 Android 리소스에 공개 인증서를 내보냅니다.
+3. Android SDK build-tools와 android.jar, JDK를 준비하고 다음 명령으로 빌드합니다.
+
+```powershell
+python android-usb/build.py --sdk-tools "C:/Android/build-tools/35.0.0" --android-jar "C:/Android/platforms/android-35/android.jar" --jdk "C:/Program Files/Java/jdk-21"
+```
+
+4. 해당 PC가 만든 APK를 설치합니다. 새 서명키로 빌드했다면 기존 앱과 서명이 달라 기존 앱 삭제 후 설치가 필요할 수 있습니다.
+
+`.local-tls`, `.local-wifi`, `.keys`, CLIKA 라이선스/API 키와 모델 가중치는 공개 배포에서 제외합니다.
+
+## 검증 범위
+
+- JavaScript 테스트52개 통과: 합류/배치, 시점 줌, 입력, 카메라 취소·거부·종료 등.
+- 실제 RTX 2080 Ti 렌더러: 드론 선택에 따른 카메라 변경, 탑승 위치, 객체 전용 전송 프레임, 일반 도시 영상 복귀 확인.
+- APK Java 컴파일 및 v2/v3 서명 검증 완료, 기존 V5.3 서명과 일치.
+- 휴대폰 실기기 카메라 합성과 권한 팝업 동작은 새 APK 설치 후 최종 확인이 필요합니다. 실기기 검증 완료로 표시하지 않습니다.
+
+## 참고
+
+- [Android WebView 카메라 권한](https://developer.android.com/reference/android/webkit/PermissionRequest)
+- [getUserMedia 보안·권한](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
+- 지도 출처와 추정 건물 구분: [MAP_SOURCES.txt](experiments/haneulmaru_pro/MAP_SOURCES.txt)
+- CLIKA / Qwen3.5-2B는 기존 PC 자연어 장면 설정 기능이며 이번 AR 복구에서 모델을 변경하지 않았습니다.
