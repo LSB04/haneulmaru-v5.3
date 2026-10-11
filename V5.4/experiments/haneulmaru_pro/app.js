@@ -1,4 +1,5 @@
 import {zoomCamera,cameraZoomState} from './camera-zoom.js';
+import {configureCameraDepth} from './render-quality.js';
 import {installScenarioControls} from './scenario-controls.js';
 import {motionOnly} from './control-policy.js';
 import {validateScene} from './scene-settings.js';
@@ -12,6 +13,7 @@ let renderError='';addEventListener('error',e=>{renderError=e.message;say('화�
 const sim=new Scenario(),renderer=new T.WebGLRenderer({canvas:$('view'),antialias:true,powerPreference:'high-performance'});
 renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.shadowMap.type=T.PCFShadowMap;renderer.shadowMap.autoUpdate=false;
 const gl=renderer.getContext(),ext=gl.getExtension('WEBGL_debug_renderer_info'),gpu=ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),software=/swiftshader|software|llvmpipe|basic render/i.test(gpu);
+renderer.debug.onShaderError=()=>{renderError='3D 셰이더 컴파일 실패';say(renderError);};
 $('gpu').textContent='WebGL: '+gpu;
 const scene=new T.Scene();scene.background=new T.Color(0xb7d2df);scene.fog=new T.FogExp2(0xc7dbe1,.00028);
 const camera=new T.PerspectiveCamera(62,innerWidth/innerHeight,.1,4500),ortho=new T.OrthographicCamera(-700,700,700,-700,.1,4000);ortho.position.set(0,1200,0);ortho.up.set(0,0,-1);ortho.lookAt(0,0,0);
@@ -25,7 +27,7 @@ const keys=new Set(),effects=new Map(),pointer=new Map();
 function resize(){const aspect=remoteAspect||innerWidth/innerHeight;if(remoteAspect){renderer.setPixelRatio(1);renderer.setSize(aspect>1?streamEdge:Math.round(streamEdge*aspect),aspect>1?Math.round(streamEdge/aspect):streamEdge,false);}else{renderer.setPixelRatio(Math.min(devicePixelRatio,profiles[quality].dpr));renderer.setSize(innerWidth,innerHeight,false);}if(transmission.width!==renderer.domElement.width||transmission.height!==renderer.domElement.height){transmission.width=renderer.domElement.width;transmission.height=renderer.domElement.height;}camera.aspect=aspect;camera.updateProjectionMatrix();ortho.left=-700*aspect;ortho.right=700*aspect;ortho.updateProjectionMatrix();}
 function setQuality(value){if(!Object.hasOwn(profiles,value))return;quality=value;const old=world;world=buildWorld(value);scene.add(world.root);if(old){scene.remove(old.root);old.dispose();}renderer.shadowMap.enabled=profiles[value].shadow>0;sun.shadow.mapSize.setScalar(profiles[value].shadow||512);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}renderer.shadowMap.needsUpdate=true;$('quality').value=value;resize();}
 setQuality(software?'low':'high');
-function setView(value){if(!['chase','cockpit','overview','map'].includes(value))return;view=value;lookYaw=0;lookPitch=value==='chase'?.2:0;controls.enabled=value==='overview'&&!imuEnabled;if(value==='overview'){camera.position.set(430,360,510);controls.target.set(0,40,0);controls.update();}document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('viewLabel').textContent={chase:'CHASE / 추적 시점',cockpit:'ON BOARD / 드론 탑승',overview:'WORLD / 전체 3D',map:'TOP / 2D 지도'}[view];}
+function setView(value){if(!['chase','cockpit','overview','map'].includes(value))return;view=value;configureCameraDepth(camera,value);lookYaw=0;lookPitch=value==='chase'?.2:0;controls.enabled=value==='overview'&&!imuEnabled;if(value==='overview'){camera.position.set(430,360,510);controls.target.set(0,40,0);controls.update();}document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('viewLabel').textContent={chase:'CHASE / 추적 시점',cockpit:'ON BOARD / 드론 탑승',overview:'WORLD / 전체 3D',map:'TOP / 2D 지도'}[view];}
 function setMode(mode){sim.setMode(mode);setView(mode==='game'?'overview':'chase');sync();}
 function resetView(){lookYaw=0;lookPitch=view==='chase'?.2:0;if(view==='overview')setView('overview');say('선택한 시점의 기준 방향으로 복귀했습니다.');}
 function restart(){sim.seed=Number($('seed').value)>>>0;sim.reset();keys.clear();remoteMovement={};remoteUntil=0;clearEffects();setView(sim.mode==='flight'?'chase':'overview');sync();}

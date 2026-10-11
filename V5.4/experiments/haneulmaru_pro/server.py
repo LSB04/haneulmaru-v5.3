@@ -6,7 +6,7 @@ import json,mimetypes,threading,subprocess,re,sys,webbrowser
 ROOT=Path(__file__).resolve().parent
 PUBLIC_URL=''
 FILES=['scene-settings.js','airfield.js','index.html','style.css','app.js','imu-input.js','imu-direction.js','world.js','terrain.js','scenario.js','hud.js','game-info.json','icon-192.png','icon-512.png','vendor/three.module.min.js','vendor/three.core.min.js','vendor/OrbitControls.js','vendor/LICENSE.txt']
-FILES += ['manual-controls.js','control-policy.js','camera-zoom.js','scenario-controls.js','phone-gestures.js','zoom-feedback.js']
+FILES += ['manual-controls.js','control-policy.js','camera-zoom.js','scenario-controls.js','phone-gestures.js','zoom-feedback.js','render-quality.js']
 FILES += ['city-data.js','city-fill.js','formation.js','camera-ar.js','city-world.js','city-spatial.js','drone-model.js','geometry-utils.js','synthetic-terrain.js','MAP_SOURCES.txt']
 ASSETS={'/'+n:ROOT/n for n in FILES}
 ASSETS['/']=ROOT/'index.html'

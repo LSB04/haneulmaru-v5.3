@@ -3,28 +3,31 @@ import {CITY} from './city-data.js';
 import {CITY_BUILDINGS,FILL_BUILDINGS} from './city-fill.js';
 import {GROUND,inside,clipSegment} from './city-spatial.js';
 import {mergeGeometry,primitive} from './geometry-utils.js';
+import {facadeFragment,CITY_LAYERS as L} from './render-quality.js';
 
 const ROAD_WIDTH={motorway:18,trunk:17,primary:16,secondary:12,tertiary:9,residential:6,unclassified:6,service:4,living_street:5,footway:2,path:1.8,cycleway:2.2,steps:2,pedestrian:4,river:22};
 const pavement=new Set(['footway','path','cycleway','steps','pedestrian']);
 function shape(points){const s=new T.Shape();points.forEach(([x,z],i)=>i?s.lineTo(x,-z):s.moveTo(x,-z));s.closePath();return s;}
 function extrusion(points,h){const g=new T.ExtrudeGeometry(shape(points),{depth:h,bevelEnabled:false,steps:1,curveSegments:1});g.rotateX(-Math.PI/2);g.translate(0,GROUND,0);return g;}
 function polygon(points,y){const g=new T.ShapeGeometry(shape(points));g.rotateX(-Math.PI/2);g.translate(0,y,0);return g;}
-function facade(color){const m=new T.MeshStandardMaterial({color,roughness:.78});m.onBeforeCompile=s=>{s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vCityPos;varying vec3 vCityNormal;').replace('#include <begin_vertex>','#include <begin_vertex>\nvCityPos=position;vCityNormal=normal;');s.fragmentShader=s.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vCityPos;varying vec3 vCityNormal;').replace('#include <color_fragment>',`#include <color_fragment>
- if(abs(vCityNormal.y)<0.45){float u=abs(vCityNormal.x)>abs(vCityNormal.z)?vCityPos.z:vCityPos.x;vec2 tile=fract(vec2(u*.24,(vCityPos.y-14.)/3.4));float pane=step(.17,tile.x)*step(tile.x,.78)*step(.23,tile.y)*step(tile.y,.8);float lit=step(.81,fract(sin(floor(u*.24)*12.9+floor(vCityPos.y/3.4)*78.2)*43758.5));diffuseColor.rgb=mix(diffuseColor.rgb,mix(vec3(.15,.27,.34),vec3(.68,.64,.48),lit),pane*.83);}
- `);};return m;}
+function facade(color){const m=new T.MeshStandardMaterial({color,roughness:.88});m.onBeforeCompile=s=>{s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vCityPos;varying vec3 vCityNormal;').replace('#include <begin_vertex>','#include <begin_vertex>\nvCityPos=position;vCityNormal=normal;');s.fragmentShader=s.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vCityPos;varying vec3 vCityNormal;').replace('#include <color_fragment>','#include <color_fragment>\n'+facadeFragment);};m.customProgramCacheKey=()=> 'city-facade-filtered-v1';return m;}
 export function addCity(root,quality='high'){
  const group=new T.Group();group.name='yangjae-osm-city';root.add(group);const batches=new Map();
  const mats={ground:new T.MeshStandardMaterial({color:0xc6c3b6,roughness:1}),walk:new T.MeshStandardMaterial({color:0xd4d3c6,roughness:1}),road:new T.MeshStandardMaterial({color:0x414e56,roughness:.94}),lane:new T.MeshBasicMaterial({color:0xe6d898}),park:new T.MeshStandardMaterial({color:0x769077,roughness:1}),water:new T.MeshStandardMaterial({color:0x4a95a7,roughness:.26,metalness:.25}),roof:new T.MeshStandardMaterial({color:0x526472,roughness:.65}),edge:new T.LineBasicMaterial({color:0x657981,transparent:true,opacity:.38})};
+ // Polygon offset is bounded by semantic layer, never by object count/order.
+ for(const [key,offset]of [['park',-1],['water',-2],['walk',-2],['road',-3],['lane',-4]]){mats[key].polygonOffset=true;mats[key].polygonOffsetFactor=offset;mats[key].polygonOffsetUnits=offset;}
+ mats.edge.depthWrite=false;mats.edge.opacity=.16;
  const palette=[0xc1c7c7,0xaabdc5,0xc8bfae,0x9daebb,0xb4b9b4,0xcac6bc];palette.forEach((c,i)=>mats['b'+i]=facade(c));
  const push=(key,g)=>{if(!batches.has(key))batches.set(key,[]);batches.get(key).push(g);};
  function box(key,w,h,d,x,y,z,angle=0){push(key,primitive(new T.BoxGeometry(w,h,d),[x,y,z],[1,1,1],[0,angle,0]));}
  box('ground',1200,3,1200,0,GROUND-1.5,0);
- for(const p of CITY.land)push(p.kind==='water'?'water':'park',polygon(p.points,GROUND+.12));
+ for(const p of CITY.land)push(p.kind==='water'?'water':'park',polygon(p.points,GROUND+(p.kind==='water'?L.water:L.land)));
  let segments=0;
- for(const r of CITY.roads){if(r.tunnel)continue;const width=Math.max(1,Math.min(35,r.width||(r.lanes?r.lanes*3.3:ROAD_WIDTH[r.kind]||4)));for(let i=1;i<r.points.length;i++){const seg=clipSegment(r.points[i-1],r.points[i]);if(!seg)continue;const [a,b]=seg,dx=b[0]-a[0],dz=b[1]-a[1],length=Math.hypot(dx,dz);if(length<.1)continue;segments++;const x=(a[0]+b[0])/2,z=(a[1]+b[1])/2,angle=Math.atan2(dx,dz),y=GROUND+(r.bridge?1.4:.3);
-  if(r.kind==='river'){box('park',width+30,.12,length+1,x,GROUND+.16,z,angle);box('water',width,.12,length+1,x,GROUND+.24,z,angle);continue;}
-  box('walk',width+3.8,.13,length+2,x,y,z,angle);box(pavement.has(r.kind)?'walk':'road',width,.12,length+1,x,y+.1,z,angle);
-  if(width>=9){for(let t=5;t<length-2;t+=13){const f=t/length;box('lane',.28,.03,6,a[0]+dx*f,y+.2,a[1]+dz*f,angle);}}
+ for(const r of CITY.roads){if(r.tunnel)continue;const width=Math.max(1,Math.min(35,r.width||(r.lanes?r.lanes*3.3:ROAD_WIDTH[r.kind]||4)));for(let i=1;i<r.points.length;i++){const seg=clipSegment(r.points[i-1],r.points[i]);if(!seg)continue;const [a,b]=seg,dx=b[0]-a[0],dz=b[1]-a[1],length=Math.hypot(dx,dz);if(length<.1)continue;segments++;const x=(a[0]+b[0])/2,z=(a[1]+b[1])/2,angle=Math.atan2(dx,dz),y=GROUND+(r.bridge?L.bridge:0);
+  if(r.kind==='river'){box('park',width+30,.08,length+1,x,GROUND+L.bank,z,angle);box('water',width,.08,length+1,x,GROUND+L.river,z,angle);continue;}
+  box('walk',width+3.8,.12,length+2,x,y+L.walk,z,angle);
+  if(!pavement.has(r.kind))box('road',width,.12,length+1,x,y+L.road,z,angle);
+  if(width>=9&&!pavement.has(r.kind)){for(let t=5;t<length-2;t+=13){const f=t/length;box('lane',.38,.02,6,a[0]+dx*f,y+L.lane,a[1]+dz*f,angle);}}
  }}
  const roofEdges=[];let heightsFromTags=0;
  for(const b of CITY_BUILDINGS){push('b'+b.id%palette.length,extrusion(b.points,b.height));if(['osm_height','osm_levels'].includes(b.heightSource))heightsFromTags++;
